@@ -13,21 +13,23 @@ namespace kursah_5semestr.Services
 {
     public class SessionsService : ISessionsService
     {
-        // private const string CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        private const string KEY = "Bkwnhxz1jRyaJ8OBmS3YuJfGVvg13UYP5iQt8pluGuzOOHpWWthMcBJkwGYX89Mu";
         private const string ISSUER = "my-auth-service";
         private const string AUDIENCE = "my-application";
         private const int TTL = 1000;
-        private AppDbContext _context;
+        private readonly ISessionsRepository _sessionsRepository;
+        private readonly ILogger _logger;
+        private string _key;
 
-        public SessionsService(AppDbContext context)
+        public SessionsService(ISessionsRepository sessionsRepository, ILogger<SessionsService> logger)
         {
-            _context = context;
+            _sessionsRepository = sessionsRepository;
+            _logger = logger;
+            _key = File.ReadAllText("./key.dat");
         }
 
         private string GenerateToken(User user)
         {
-            var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(KEY));
+            var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_key));
             var now = DateTime.UtcNow;
             var claims = new List<Claim>
                 {
@@ -47,18 +49,16 @@ namespace kursah_5semestr.Services
         public async Task<Session> CreateSession(User user)
         {
             var session = new Session();
-            session.Id = Guid.NewGuid();
             session.User = user;
             session.Token = GenerateToken(user);
-            _context.Add(session);
-            await _context.SaveChangesAsync();
+            session = await _sessionsRepository.CreateSession(session);
+            _logger.LogInformation($"Created session {session.Id}");
             return session;
         }
 
         public Session FindByToken(string token)
         {
-            var session = _context.Sessions.Include(s => s.User).Where(s => s.Token == token).First();
-            return session;
+            return _sessionsRepository.FindByToken(token);
         }
     }
 }

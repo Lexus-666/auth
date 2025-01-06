@@ -6,22 +6,23 @@ namespace kursah_5semestr.Services
 {
     public class UsersService : IUsersService
     {
-        private AppDbContext _context;
+        private IUsersRepository _usersRepository;
         private ISessionsService _sessions;
         private IBrokerService _brokerService;
+        private ILogger _logger;
 
-        public UsersService(AppDbContext context, ISessionsService sessions, IBrokerService brokerService)
+        public UsersService(IUsersRepository usersRepository, ISessionsService sessions, IBrokerService brokerService, ILogger<UsersService> logger)
         {
-            _context = context;
+            _usersRepository = usersRepository;
             _sessions = sessions;
             _brokerService = brokerService;
+            _logger = logger;
         }
 
         public async Task<User> CreateUser(User user)
         {
-            user.Id = Guid.NewGuid();
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            user = await _usersRepository.CreateUser(user);
+            _logger.LogInformation($"Created user {user.Login}");
             var dto = new UserOutDto(Id: user.Id, Login: user.Login);
             var message = new InstanceChanged(Action: "create", Entity: "user", Data: dto);
             await _brokerService.SendMessage("changes", message);
@@ -30,13 +31,12 @@ namespace kursah_5semestr.Services
 
         public User? FindById(Guid id)
         {
-            return _context.Users.Find(id);
+            return _usersRepository.FindById(id);
         }
 
         public User FindByLogin(string login)
         {
-            var user = _context.Users.Where(u => u.Login == login).First();
-            return user;
+            return _usersRepository.FindByLogin(login);
         }
 
         public bool CheckPassword(string login, string password)
@@ -62,13 +62,16 @@ namespace kursah_5semestr.Services
                 var passwordHash = Convert.ToBase64String(BCrypt.PasswordToByteArray(password.ToCharArray()));
                 if (passwordHash != user.PasswordHash)
                 {
+                    _logger.LogWarning($"Password check failed for user '{login}'");
                     throw new Exception("Invalid password");
                 }
                 var session = await _sessions.CreateSession(user);
+                _logger.LogWarning($"Logged in user '{login}'");
                 return session;
             }
             else
             {
+                _logger.LogWarning($"User '{login}' not found");
                 throw new Exception("User not found");
             }
         }

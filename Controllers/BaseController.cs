@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Xml.Linq;
 using kursah_5semestr.Abstractions;
 using kursah_5semestr.Contracts;
 using Microsoft.AspNetCore.Http;
@@ -14,13 +15,15 @@ namespace kursah_5semestr.Controllers
     [ApiController]
     public class BaseController : ControllerBase
     {
-        IUsersService _usersService;
-        ISessionsService _sessionsService;
+        private readonly IUsersService _usersService;
+        private readonly ISessionsService _sessionsService;
+        private readonly ILogger _logger;
 
-        public BaseController(IUsersService usersService, ISessionsService sessionsService)
+        public BaseController(IUsersService usersService, ISessionsService sessionsService, ILogger<BaseController> logger)
         { 
             _usersService = usersService;
             _sessionsService = sessionsService;
+            _logger = logger;
         }
 
         private bool CheckBasicAuth()
@@ -41,7 +44,12 @@ namespace kursah_5semestr.Controllers
                     int separator = credentials.IndexOf(':');
                     string name = credentials.Substring(0, separator);
                     string password = credentials.Substring(separator + 1);
-                    return name == "admin" && _usersService.CheckPassword(name, password);
+                    var result = name == "admin" && _usersService.CheckPassword(name, password);
+                    if (!result)
+                    {
+                        _logger.LogInformation($"Basic authentication failed for user '{name}'");
+                    }
+                    return result;
                 }
             }
             return false;
@@ -81,8 +89,9 @@ namespace kursah_5semestr.Controllers
                 var session = _sessionsService.FindByToken(token);
                 return Ok(new UserOutDto(session.User.Id, session.User.Login));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogWarning("User session not found");
                 return NotFound(new StatusOutDto("error"));
             }
         }
